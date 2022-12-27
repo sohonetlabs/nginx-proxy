@@ -144,6 +144,25 @@ upstream {{ .Upstream }} {
 }
 {{ end }}
 
+{{ define "server_config" }}
+	server_name {{ .Host }};
+	{{ if .ServerTokens }}
+	server_tokens {{ .ServerTokens }};
+	{{ end }}
+	{{ if .SSL }}
+	listen {{ .Port }} ssl http2 {{ .DefaultServer }};
+		{{ if .EnableIPv6 }}
+	listen [::]:{{ .Port }} ssl http2 {{ .DefaultServer }};
+		{{ end }}
+	{{ else }}
+	listen {{ .Port }} {{ .DefaultServer }};
+		{{ if .EnableIPv6 }}
+	listen [::]:{{ .Port }} {{ .DefaultServer }};
+		{{ end }}
+	{{ end }}
+	{{ .AccessLog }}
+{{ end }}
+
 {{ if ne $nginx_proxy_version "" }}
 # nginx-proxy version : {{ $nginx_proxy_version }}
 {{ end }}
@@ -313,21 +332,24 @@ server {
 {{/* Use the cert specified on the container or fallback to the best vhost match */}}
 {{ $cert := (coalesce $certName $vhostCert) }}
 
+{{ $baseServerConfig := dict
+	"Host" $host
+	"ServerTokens" $server_tokens
+	"DefaultServer" $default_server
+	"EnableIPv6" $enable_ipv6
+	"AccessLog" $access_log
+}}
+
 {{ $is_https := (and (ne $https_method "nohttps") (ne $cert "") (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))) }}
 
 {{ if $is_https }}
 
 {{ if eq $https_method "redirect" }}
 server {
-	server_name {{ $host }};
-	{{ if $server_tokens }}
-	server_tokens {{ $server_tokens }};
-	{{ end }}
-	listen {{ $external_http_port }} {{ $default_server }};
-	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_http_port }} {{ $default_server }};
-	{{ end }}
-	{{ $access_log }}
+	{{ template "server_config" (deepCopy $baseServerConfig | mustMerge (dict
+		"SSL" false
+		"Port" $external_http_port
+	)) }}
 
 	# Do not HTTPS redirect ACME challenge
 	location ^~ /.well-known/acme-challenge/ {
@@ -350,15 +372,10 @@ server {
 {{ end }}
 
 server {
-	server_name {{ $host }};
-	{{ if $server_tokens }}
-	server_tokens {{ $server_tokens }};
-	{{ end }}
-	listen {{ $external_https_port }} ssl http2 {{ $default_server }};
-	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }};
-	{{ end }}
-	{{ $access_log }}
+	{{ template "server_config" (deepCopy $baseServerConfig | mustMerge (dict
+		"SSL" true
+		"Port" $external_https_port
+	)) }}
 
 	{{ template "ssl_policy" (dict "ssl_policy" $ssl_policy) }}
 
@@ -421,15 +438,10 @@ server {
 {{ if or (not $is_https) (eq $https_method "noredirect") }}
 
 server {
-	server_name {{ $host }};
-	{{ if $server_tokens }}
-	server_tokens {{ $server_tokens }};
-	{{ end }}
-	listen {{ $external_http_port }} {{ $default_server }};
-	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_http_port }} {{ $default_server }};
-	{{ end }}
-	{{ $access_log }}
+	{{ template "server_config" (deepCopy $baseServerConfig | mustMerge (dict
+		"SSL" false
+		"Port" $external_http_port
+	)) }}
 
 	{{ if (exists (printf "/etc/nginx/vhost.d/%s" $host)) }}
 	include {{ printf "/etc/nginx/vhost.d/%s" $host }};
@@ -466,15 +478,10 @@ server {
 
 {{ if (and (not $is_https) (exists "/etc/nginx/certs/default.crt") (exists "/etc/nginx/certs/default.key")) }}
 server {
-	server_name {{ $host }};
-	{{ if $server_tokens }}
-	server_tokens {{ $server_tokens }};
-	{{ end }}
-	listen {{ $external_https_port }} ssl http2 {{ $default_server }};
-	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }};
-	{{ end }}
-	{{ $access_log }}
+	{{ template "server_config" (deepCopy $baseServerConfig | mustMerge (dict
+		"SSL" true
+		"Port" $external_https_port
+	)) }}
 	return 500;
 
 	ssl_certificate /etc/nginx/certs/default.crt;
