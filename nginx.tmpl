@@ -206,6 +206,12 @@ upstream {{ $upstream_name }} {
 		{{ end }}
 	{{ end }}
 {{ end }}
+{{ range $container := $containers }}
+{{ if $container.Env.VIRTUAL_ADDRESS }}
+{{ $server_found = "true" }}
+server {{ $container.Env.VIRTUAL_ADDRESS }}:{{ $container.Env.VIRTUAL_PORT }};
+{{ end }}
+{{ end }}
 {{/* nginx-proxy/nginx-proxy#1105 */}}
 {{ if (eq $server_found "false") }}
 	# Fallback entry
@@ -266,7 +272,7 @@ server {
 	listen [::]:{{ $external_http_port }} {{ $default_server }};
 	{{ end }}
 	{{ $access_log }}
-	
+
 	# Do not HTTPS redirect Let'sEncrypt ACME challenge
 	location ^~ /.well-known/acme-challenge/ {
 		auth_basic off;
@@ -276,7 +282,7 @@ server {
 		try_files $uri =404;
 		break;
 	}
-	
+
 	location / {
 		{{ if eq $external_https_port "443" }}
 		return 301 https://$host$request_uri;
