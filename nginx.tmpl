@@ -135,6 +135,12 @@ location {{ .Path }} {
 			{{ end }}
 		{{ end }}
 	{{ end }}
+	{{ range $container := $containers }}
+	{{ if $container.Env.VIRTUAL_ADDRESS }}
+	{{ $server_found = "true" }}
+	server {{ $container.Env.VIRTUAL_ADDRESS }}:{{ $container.Env.VIRTUAL_PORT }};
+	{{ end }}
+	{{ end }}
 	{{/* nginx-proxy/nginx-proxy#1105 */}}
 	{{ if (eq $server_found "false") }}
         # Fallback entry
